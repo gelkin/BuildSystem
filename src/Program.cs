@@ -21,7 +21,7 @@ namespace BuildSystem
         private NodeTask initialTaskDependencyTree;
 
         static void Main(string[] args)
-        {
+        {   
             new Program().Run(args);
         }
 
@@ -322,7 +322,7 @@ namespace BuildSystem
             else
             {
                 command = cmdProgramName;
-                args = cmdCommandPrefix;
+                args = cmdCommandPrefix + action;
             }
 
             ProcessStartInfo startInfo = new ProcessStartInfo(command, args)

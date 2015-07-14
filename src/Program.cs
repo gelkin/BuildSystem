@@ -44,7 +44,7 @@ namespace BuildSystem
             try
             {
                 isUnix = IsUnix();
-
+             
                 SatisfyInitialTask();
             }
             catch (Exception e)
@@ -129,48 +129,78 @@ namespace BuildSystem
 
         private NodeTask BuildDependencyTree(string rootTask)
         {
-            if (!taskToDescription.ContainsKey(rootTask))
+            Queue<NodeTask> notProcessedNodes = new Queue<NodeTask>();
+            NodeTask rootNode = new NodeTask(rootTask);
+            taskToNode.Add(rootTask, rootNode);
+            notProcessedNodes.Enqueue(rootNode);
+            while (notProcessedNodes.Count > 0)
             {
-                throw new BuildSystemException(String.Format("No declaration for task \"{0}\" found.", rootTask));
-            }
-
-            if (taskToNode.ContainsKey(rootTask))
-            {
-                return taskToNode[rootTask];
-            }
-
-            NodeTask root = new NodeTask(rootTask);
-            taskToNode.Add(rootTask, root);
-
-            IList<string> dependencies = taskToDescription[rootTask].Dependencies;
-            IList<NodeTask> children = new List<NodeTask>(dependencies.Count);
-            foreach (var child in dependencies)
-            {
-                if (taskToNode.ContainsKey(child))
+                NodeTask currentNode = notProcessedNodes.Dequeue();
+                if (!taskToDescription.ContainsKey(currentNode.Name))
                 {
-                    children.Add(taskToNode[child]);
+                    throw new BuildSystemException(String.Format("No declaration for task \"{0}\" found.", rootTask));
                 }
-                else
+
+                IList<string> dependencies = taskToDescription[currentNode.Name].Dependencies;
+                IList<NodeTask> children = new List<NodeTask>(dependencies.Count);
+                foreach (var child in dependencies)
                 {
-                    children.Add(BuildDependencyTree(child));
+                    if (taskToNode.ContainsKey(child))
+                    {
+                        children.Add(taskToNode[child]);
+                    }
+                    else
+                    {
+                        NodeTask childNode = new NodeTask(child);
+                        taskToNode.Add(child, childNode);
+                        children.Add(childNode);
+
+                        notProcessedNodes.Enqueue(childNode);
+                    }
                 }
+                currentNode.Children = children;
             }
 
-            root.Children = children;
-            return root;
+            return rootNode;
         }
 
         private bool NoCycles(NodeTask node)
         {
+            Stack<NodeTask> notProcessedNodes = new Stack<NodeTask>();
+
             node.State = 1;
-            foreach (var child in node.Children)
+            notProcessedNodes.Push(node);
+
+            while (notProcessedNodes.Count > 0)
             {
-                if ((child.State == 1) || !NoCycles(child))
+                bool continueFlag = false;
+                
+                NodeTask current = notProcessedNodes.Peek();
+                foreach (var child in current.Children)
                 {
-                    return false;
+                    if (child.State == 1)
+                    {
+                        return false;
+                    }
+                    if (child.State == 0)
+                    {
+                        child.State = 1;
+                        notProcessedNodes.Push(child);
+                        
+                        continueFlag = true;
+                        break;
+                    }
                 }
+                if (continueFlag)
+                {
+                    continue;
+                }
+
+                // all children are black =)
+                current.State = 2;
+                notProcessedNodes.Pop();
             }
-            node.State = 2;
+
             return true;
         }
 
@@ -245,23 +275,38 @@ namespace BuildSystem
             return actions;
         }
 
-        private void SatisfyNodeTask(NodeTask currentTask)
+        private void SatisfyNodeTask(NodeTask node)
         {
-            if (currentTask.Satisfied)
+            Stack<NodeTask> notSatisfiedTasks = new Stack<NodeTask>();
+
+            Console.WriteLine("\"{0}\" task is started.", node.Name);
+            notSatisfiedTasks.Push(node);
+
+            while (notSatisfiedTasks.Count > 0)
             {
-                return;
+                bool continueFlag = false;
+                NodeTask current = notSatisfiedTasks.Peek();
+                foreach (var child in current.Children)
+                {
+                    if (!child.Satisfied)
+                    {
+                        Console.WriteLine("\"{0}\" task is started.", child.Name);
+                        notSatisfiedTasks.Push(child);
+
+                        continueFlag = true;
+                        break;
+                    }
+                }
+                if (continueFlag)
+                {
+                    continue;
+                }
+
+                ExecuteActions(taskToDescription[current.Name].Actions);
+                current.Satisfied = true;
+                Console.WriteLine("\"{0}\" task is finished.", current.Name);
+                notSatisfiedTasks.Pop();
             }
-            Console.WriteLine("\"{0}\" task is started.", currentTask.Name);
-
-            foreach (var child in currentTask.Children)
-            {
-                SatisfyNodeTask(child);
-            }
-
-            ExecuteActions(taskToDescription[currentTask.Name].Actions);
-
-            currentTask.Satisfied = true;
-            Console.WriteLine("\"{0}\" task is finished.", currentTask.Name);
         }
 
         private void ExecuteActions(IList<string> actions)

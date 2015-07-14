@@ -61,13 +61,8 @@ namespace BuildSystem
 
         private string NextDependency()
         {
-            if (start == s.Length)
-            {
-                return null;
-            }
-
             // skip prefix spaces
-            while (s[start] == ' ')
+            while (start < s.Length && s[start] == ' ')
             {
                 ++start;
             }
